@@ -1,0 +1,13 @@
+<settings>
+    <input path="test2.png" px_per_mm="10" />
+
+    <material z_depth_mm="100" />
+
+    <tool 
+        diameter_mm="1.5"
+        pass_depth_mm="2"
+        cut_rate_mm_s="500"
+        fly_rate_mm_s="1000"
+        plunge_rate_mm_s="250"
+        clear_height_mm="20"/>
+</settings>
