@@ -100,7 +100,11 @@ class PathMaker:
 
         self.step_px = 5
         self.step_ang = 65
-
+        
+        self.row_start = 0
+        self.row_offset = 0
+        self.row_overlap_px = 5
+        
         #turtle debugging
         turtle.delay(0)
         turtle.color('red')
@@ -118,9 +122,11 @@ class PathMaker:
         count = 0
         sum_x, sum_y = 0, 0
 
+        radius = self.row_offset + self.rad_px
+
         for ang in range(0, 360):
-            rx = math.cos(math.radians(ang)) * self.rad_px
-            ry = math.sin(math.radians(ang)) * self.rad_px
+            rx = math.cos(math.radians(ang)) * radius
+            ry = math.sin(math.radians(ang)) * radius
 
             tx = x_px + rx
             ty = y_px + ry
@@ -130,55 +136,47 @@ class PathMaker:
                 sum_x += rx
                 sum_y += ry
 
-        # normalize vx and vy
-        mag = math.sqrt(pow(sum_x, 2) + pow(sum_y, 2))
-        if mag == 0: mag = 1
+        # normalize sum_x and sum_y
+        nrm = math.sqrt(pow(sum_x, 2) + pow(sum_y, 2))
+        if nrm == 0: nrm = 1
+
+        pct = (count / 360) + 0.01
 
         result = {
-            "pct" : (count / 360) + 0.1,
-            "dir" : (sum_x / mag, sum_y / mag),
+            "pct" : pct,
+            "mag" : (1-pct) * (radius * 2),
+            "dir" : (sum_x / nrm, sum_y / nrm),
         }
 
         return result
 
     def addPathNode(self, x_px, y_px):
+        #x = x_px + d[0] * (mag + self.row_offset)
+        #y = y_px + d[1] * (mag + self.row_offset)
 
-        last_path =  self.paths[len(self.paths)-1]
+        turtle.setpos(
+             x_px - self.bounds[0]/2,
+            -y_px + self.bounds[1]/2)
+        turtle.dot(self.rad_px*2, "blue")
 
+        last_path = self.paths[len(self.paths)-1]
         last_path.append((x_px, y_px))
 
-        if len(last_path) <= 2: return
+        dx = x_px - last_path[self.row_start][0]
+        dy = y_px - last_path[self.row_start][1]
 
-        lshift = 0
-        
-        for b in range(0, len(last_path)):
-            dx = x_px - last_path[-b][0]
-            dy = y_px - last_path[-b][1]
-            mag = math.sqrt(pow(dx, 2) + pow(dy, 2))
+        mag = math.sqrt(pow(dx, 2) + pow(dy, 2))
 
-            if mag > self.rad_px * 2:
-                lshift = b
-                break
-
-        if lshift == 0: return
-
-        # clear all pixels in the radius to transparent
-        # so they won't be used again
-        lx, ly = last_path[-lshift]
-
-        for ang in range(0, 180):
-            rx = round(lx + math.cos(math.radians(ang)) * self.rad_px)
-            ry = round(ly + math.sin(math.radians(ang)) * self.rad_px)
-
-            for column_y in range(-ry, ry+1):
-                if self.confined(rx, column_y):
-                    self.pixels[rx, column_y] = (0, 0, 0, 0)
+        if mag <= self.rad_px * 2 and len(last_path) > self.row_start + 10:
+            self.row_start = len(last_path)
+            self.row_offset += (self.rad_px * 2) - self.row_overlap_px
+            print(self.row_offset)
 
 
     def makePath(self, x_px, y_px, color):
         # calculate how far into the mat this path should cut
         # based on the darkness of the color
-        color_avg = color[0] + color[1] + color[2] / (3 * 255) 
+        color_avg = (color[0] + color[1] + color[2]) / (3 * 255) 
             
         # don't make a path if the color is transparent/white or
         # a path already exists here
@@ -188,38 +186,31 @@ class PathMaker:
         self.paths.append([])
         self.depths.append(1 - color_avg)
 
-        fails = 0
-
-        while fails < 180:
+        while True:
             turtle.setpos(x_px - self.bounds[0]/2, -y_px + self.bounds[1]/2)
 
             res = self.inside(x_px, y_px, color)
 
-            if res["pct"] < 1:
-                x_px += res["dir"][0] * (1-res["pct"]) * self.rad_px * 2
-                y_px += res["dir"][1] * (1-res["pct"]) * self.rad_px * 2
-                
-                d = res["dir"]
+            if res["pct"] < 1 and res["pct"] > 0:
+                x_px += res["dir"][0] * res["mag"]
+                y_px += res["dir"][1] * res["mag"]
 
-                res = self.inside(x_px, y_px, color)
+                res_b = self.inside(x_px, y_px, color)
 
-                if res["pct"] >= 1:
+                if res_b["pct"] >= 1:
                     self.addPathNode(x_px, y_px)
-
-                    turtle.setpos(x_px - self.bounds[0]/2, -y_px + self.bounds[1]/2)
-                    turtle.dot(self.rad_px*2, "blue")
 
                     # continue at a positive angle to the inside vector
                     # this will result in CW movement around the part
-                    nang = math.atan2(d[1], d[0]) + math.radians(self.step_ang)
+                    nang = (math.atan2(res["dir"][1], res["dir"][0]) +
+                            math.radians(self.step_ang))
+
                     x_px -= math.cos(nang) * self.step_px
                     y_px -= math.sin(nang) * self.step_px
 
-                else: fails += 1
+                else: return True
 
-            else: fails += 1
-
-        return True
+            else: return True
 
     def execute(self):
         for x_px in range(0, self.bounds[0]):
